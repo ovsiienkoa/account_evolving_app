@@ -30,7 +30,7 @@ class NormalizedNameMapping(BaseModel):
 class NormalizationResult(BaseModel):
     mappings: List[NormalizedNameMapping]
 
-DEBUG = True
+DEBUG = False
 
 class ReceiptProcessingAgent:
     def __init__(self, config: dict):

@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 import hashlib
 
-DEBUG = True
+DEBUG = False
 
 class DataAnalyticsAgent:
     def __init__(self, config: dict):
@@ -102,7 +102,7 @@ class DataAnalyticsAgent:
             FROM VECTOR_SEARCH(
             TABLE `{self.project_id}.{self.bq_dataset}.unique_items`,
             'embedding',
-            (SELECT ml_generate_embedding_result as embedding FROM AI.GENERATE_EMBEDDING(MODEL `{self.project_id}.{self.bq_dataset}.embedding_model_name`, (SELECT ‘product of interest text representation’ AS content),   STRUCT('CLUSTERING' AS task_type, 768 AS output_dimensionality)),
+            (SELECT embedding as embedding FROM AI.GENERATE_EMBEDDING(MODEL `{self.project_id}.{self.bq_dataset}.embedding_model`, (SELECT ‘product of interest text representation’ AS content),   STRUCT('CLUSTERING' AS task_type, 768 AS output_dimensionality)),
             top_k => 5
             )
             Example of getting exact objects from 'items' field in 'main' table
