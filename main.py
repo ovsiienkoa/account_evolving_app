@@ -3,6 +3,8 @@ import json
 import uuid
 import sys
 import os
+import hashlib
+import hmac
 from dotenv import dotenv_values
 
 from receipt_processing_agent.agent import ReceiptProcessingAgent
@@ -17,21 +19,25 @@ def main():
     if "user_id" not in st.session_state:
         st.session_state.user_id = None
 
-    if not st.session_state.user_id:
+    if not getattr(st, "user", None) or not st.user.is_logged_in:
         st.title("Welcome to Account Evolving App")
-        st.write("Please enter your User ID to continue.")
-        user_id_input = st.text_input("User ID:")
-        if st.button("Login"):
-            if user_id_input.strip():
-                st.session_state.user_id = user_id_input.strip()
-                st.rerun()
-            else:
-                st.warning("Please enter a valid User ID.")
+        st.write("Please log in with your Google account to continue.")
+        if st.button("Login with Google"):
+            st.login("google")
     else:
+        if not st.session_state.user_id:
+            google_id = st.user.get("sub") or st.user.get("email") #TODO user.get.email is wrong
+            if google_id:
+                secret = config.get("USER_SECRET", "")
+                hashed_id = hmac.new(secret.encode('utf-8'), google_id.encode('utf-8'), hashlib.sha256).hexdigest()
+                st.session_state.user_id = hashed_id
+            else:
+                st.error("Could not retrieve user ID from Google.")
+
         st.sidebar.title(f"User: {st.session_state.user_id}")
         if st.sidebar.button("Logout"):
             st.session_state.user_id = None
-            st.rerun()
+            st.logout()
 
         st.title("Agent Chats")
 
