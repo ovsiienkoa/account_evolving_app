@@ -144,6 +144,54 @@ class ReplayAgent:
             print(f"Error analyzing history: {e}")
             return []
 
+    def process_custom_prompt(self, user_prompt: str) -> list:
+        """
+        Analyzes a custom user prompt to determine what functionality is lacking, 
+        and formulates a plan of action.
+        """
+        if not user_prompt:
+            return []
+            
+        schema_context = self._gather_context()
+        
+        prompt = f"""
+        You are an expert Google BigQuery Database Administrator.
+        Your task is to analyze a user request and formulate an action plan.
+        
+        Current Database Schema and Functions:
+        ---
+        {schema_context}
+        ---
+        
+        User Request:
+        {user_prompt}
+        
+        Analyze this request. Create a plan of action consisting of BigQuery DDL statements (e.g., CREATE TABLE, CREATE VIEW, CREATE FUNCTION).
+        
+        Respond with a JSON array where each object has:
+        - "reasoning": "Extremely short description of why this is being created"
+        - "ddl_statement": "The exact CREATE OR REPLACE TABLE/VIEW or CREATE OR REPLACE FUNCTION statement to implement this."
+        - "description": "A description to add to the table/function options."
+        
+        CRITICAL RULES for ddl_statement:
+        - The statement MUST include OPTIONS(description="YOUR_DESCRIPTION_HERE") so the Data Analytics Agent automatically picks it up during introspection. This statement right after CREATE FUNCTION statement before AS ...
+        - Ensure any tables/functions are created inside `{self.project_id}.{self.bq_dataset}`.
+        - If no action is needed, return an empty array `[]`.
+        """
+        
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            print(f"Error processing custom prompt: {e}")
+            return []
+
     def generate_and_execute_ddl(self, plan: list) -> bool:
         """
         Executes the DDL statements proposed by the LLM.
