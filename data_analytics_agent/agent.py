@@ -143,6 +143,9 @@ class DataAnalyticsAgent:
             response_dict = self.generate_sql(user_query, user_id, error_feedback)
             sql_query = response_dict["data"]["generated_sql"]
             
+            # Security review before execution
+            self.sql_review(sql_query, user_id)
+            
             try:
                 sql_output = self.execute_query(sql_query)
                 success_flag = True
@@ -155,6 +158,33 @@ class DataAnalyticsAgent:
             print("Failed to generate executable SQL after 3 attempts.")
             
         return response_dict, sql_output
+
+    def sql_review(self, sql_query: str, user_id: str = None) -> None:
+        """
+        Reviews a SQL query for security risks before execution.
+        1. Checks for DROP statements (case-insensitive word check).
+        2. If user_id is provided, checks that the query filters by user_id = <user_id>.
+        """
+        if not sql_query:
+            return
+
+        # 1. DROP check (case-insensitive word check)
+        if re.search(r'\bdrop\b', sql_query, re.IGNORECASE):
+            raise ValueError("We suspect you of being naughty.")
+
+        # 2. user_id check
+        if user_id:
+            # Match user_id = 'val' or user_id="val" or user_id=val
+            # Allows table prefixes/aliases (e.g. t.user_id)
+            matches = re.findall(r'\b(?:\w+\.)?user_id\b\s*=\s*(?:[\'"]([^\'"]+)[\'"]|([^\s;\'"]+))', sql_query, re.IGNORECASE)
+            
+            if not matches:
+                raise ValueError("We suspect you of being naughty.")
+                
+            for m in matches:
+                val = m[0] or m[1]
+                if val != user_id:
+                    raise ValueError("We suspect you of being naughty.")
 
     def execute_query(self, sql_query: str) -> list:
         if DEBUG:

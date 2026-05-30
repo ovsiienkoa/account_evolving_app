@@ -164,32 +164,36 @@ def main():
                         st.write(agent_msg["content"])
                 else:
                     if prompt:
-                        with st.spinner("Generating and executing query..."):
-                            response, sql_output = data_analytics_agent.generate_and_execute_sql(prompt, user_id=st.session_state.user_id)
-                        
-                        sql_query = response["data"]["generated_sql"]
-                        st.write(response["text"])
+                        try:
+                            with st.spinner("Generating and executing query..."):
+                                response, sql_output = data_analytics_agent.generate_and_execute_sql(prompt, user_id=st.session_state.user_id)
                             
-                        with st.spinner("Analyzing results..."):
-                            analysis = data_analytics_agent.format_answer(prompt, sql_query, sql_output)
+                            sql_query = response["data"]["generated_sql"]
+                            st.write(response["text"])
+                                
+                            with st.spinner("Analyzing results..."):
+                                analysis = data_analytics_agent.format_answer(prompt, sql_query, sql_output)
+                                
+                            st.session_state.pending_analysis_data = {
+                                "user_query": prompt,
+                                "sql_query": sql_query,
+                                "sql_output": sql_output,
+                                "analysis": analysis
+                            }
                             
-                        st.session_state.pending_analysis_data = {
-                            "user_query": prompt,
-                            "sql_query": sql_query,
-                            "sql_output": sql_output,
-                            "analysis": analysis
-                        }
-                        
-                        agent_msg = {"role": "assistant", "content": analysis.get("text_response", "Analysis complete.")}
-                        if analysis.get("plot_config"):
-                            agent_msg["plot_config"] = analysis["plot_config"]
-                            agent_msg["sql_output"] = sql_output
-                            
-                        st.write(agent_msg["content"])
-                        if "plot_config" in agent_msg and agent_msg["plot_config"]:
-                            fig = data_analytics_agent.make_plot(agent_msg["plot_config"], agent_msg.get("sql_output"))
-                            if fig:
-                                st.plotly_chart(fig)
+                            agent_msg = {"role": "assistant", "content": analysis.get("text_response", "Analysis complete.")}
+                            if analysis.get("plot_config"):
+                                agent_msg["plot_config"] = analysis["plot_config"]
+                                agent_msg["sql_output"] = sql_output
+                                
+                            st.write(agent_msg["content"])
+                            if "plot_config" in agent_msg and agent_msg["plot_config"]:
+                                fig = data_analytics_agent.make_plot(agent_msg["plot_config"], agent_msg.get("sql_output"))
+                                if fig:
+                                    st.plotly_chart(fig)
+                        except ValueError as e:
+                            st.error(str(e))
+                            agent_msg = {"role": "assistant", "content": str(e)}
                     else:
                         agent_msg = {"role": "assistant", "content": "Please ask a question about your spending data."}
                         st.write(agent_msg["content"])
