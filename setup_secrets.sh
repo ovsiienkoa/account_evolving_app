@@ -19,6 +19,7 @@ cookie_secret = "${COOKIE_SECRET:-$(openssl rand -hex 16 2>/dev/null || echo 'de
 client_id = "${GOOGLE_CLIENT_ID:-YOUR_GOOGLE_CLIENT_ID}"
 client_secret = "${GOOGLE_CLIENT_SECRET:-YOUR_GOOGLE_CLIENT_SECRET}"
 server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+client_kwargs = { "scope" = "openid" }
 EOF
 
 echo ".streamlit/secrets.toml has been created/updated."

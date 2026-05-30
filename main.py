@@ -26,7 +26,7 @@ def main():
             st.login("google")
     else:
         if not st.session_state.user_id:
-            google_id = st.user.get("sub") or st.user.get("email") #TODO user.get.email is wrong
+            google_id = st.user.get("sub")
             if google_id:
                 secret = config.get("USER_SECRET", "")
                 hashed_id = hmac.new(secret.encode('utf-8'), google_id.encode('utf-8'), hashlib.sha256).hexdigest()
