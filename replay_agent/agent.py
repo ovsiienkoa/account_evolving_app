@@ -2,6 +2,10 @@ import json
 from google.cloud import bigquery
 from google import genai
 from google.genai import types
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prompts import get_analyze_history_prompt, get_process_custom_prompt
 
 class ReplayAgent:
     def __init__(self, config: dict):
@@ -100,36 +104,12 @@ class ReplayAgent:
             
         schema_context = self._gather_context()
         
-        prompt = f"""
-        You are an expert Google BigQuery Database Administrator.
-        Your task is to analyze recent user requests and the actions taken by our data analytics agent to fulfill them.
-        
-        Current Database Schema and Functions:
-        ---
-        {schema_context}
-        ---
-        
-        Note regarding tables:
-        - The `main` table contains a RECORD REPEATED field `items`. To access items, you must UNNEST(items).
-        - To match products semantically, we use BigQuery VECTOR_SEARCH on `unique_items` with embeddings generated via AI.GENERATE_EMBEDDING.
-        
-        Recent Interactions (Unprocessed):
-        {json.dumps(history_rows, indent=2)}
-        
-        Analyze these interactions. For each query, write an extremely short description of what functionality (e.g., a specific View, an aggregation Table, or a BigQuery UDF) is lacking that would make answering this query easier, faster, or less error-prone for the data analytics agent.
-        
-        If there is no lacking functionality and the query was easily answered with the current schema, ignore it.
-        
-        Respond with a JSON array where each object has:
-        - "reasoning": "Extremely short description of the lacking functionality"
-        - "ddl_statement": "The exact CREATE OR REPLACE TABLE/VIEW or CREATE OR REPLACE FUNCTION statement to implement this."
-        - "description": "A description to add to the table/function options, so the data-analytics-agent is aware of its existence."
-        
-        CRITICAL RULES for ddl_statement:
-        - The statement MUST include OPTIONS(description="YOUR_DESCRIPTION_HERE") so the Data Analytics Agent automatically picks it up during introspection. This statement right after CREATE FUNCTION statement before AS ...
-        - Ensure any tables/functions are created inside `{self.project_id}.{self.bq_dataset}`.
-        - If no improvements are needed for ANY row, return an empty array `[]`.
-        """
+        prompt = get_analyze_history_prompt(
+            schema_context=schema_context,
+            project_id=self.project_id,
+            bq_dataset=self.bq_dataset,
+            history_rows_json=json.dumps(history_rows, indent=2)
+        )
         
         try:
             response = self.client.models.generate_content(
@@ -154,30 +134,12 @@ class ReplayAgent:
             
         schema_context = self._gather_context()
         
-        prompt = f"""
-        You are an expert Google BigQuery Database Administrator.
-        Your task is to analyze a user request and formulate an action plan.
-        
-        Current Database Schema and Functions:
-        ---
-        {schema_context}
-        ---
-        
-        User Request:
-        {user_prompt}
-        
-        Analyze this request. Create a plan of action consisting of BigQuery DDL statements (e.g., CREATE TABLE, CREATE VIEW, CREATE FUNCTION).
-        
-        Respond with a JSON array where each object has:
-        - "reasoning": "Extremely short description of why this is being created"
-        - "ddl_statement": "The exact CREATE OR REPLACE TABLE/VIEW or CREATE OR REPLACE FUNCTION statement to implement this."
-        - "description": "A description to add to the table/function options."
-        
-        CRITICAL RULES for ddl_statement:
-        - The statement MUST include OPTIONS(description="YOUR_DESCRIPTION_HERE") so the Data Analytics Agent automatically picks it up during introspection. This statement right after CREATE FUNCTION statement before AS ...
-        - Ensure any tables/functions are created inside `{self.project_id}.{self.bq_dataset}`.
-        - If no action is needed, return an empty array `[]`.
-        """
+        prompt = get_process_custom_prompt(
+            schema_context=schema_context,
+            user_prompt=user_prompt,
+            project_id=self.project_id,
+            bq_dataset=self.bq_dataset
+        )
         
         try:
             response = self.client.models.generate_content(

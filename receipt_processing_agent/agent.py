@@ -9,6 +9,11 @@ from google.genai import types
 from google.cloud import bigquery
 from pydantic import BaseModel, Field
 from typing import List, Optional
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prompts import get_extract_receipt_data_prompt, get_normalize_names_prompt, get_summarize_receipt_prompt, get_create_brief_description_prompt, get_fix_receipt_data_prompt
+
 
 class ReceiptItem(BaseModel):
     #id: str = Field(description="The unique identifier of the item.")
@@ -78,13 +83,10 @@ class ReceiptProcessingAgent:
 
     def _extract_receipt_data(self, text: str) -> dict:
         schema = ReceiptExtraction.model_json_schema()
-        prompt = f"""
-        Extract the following receipt text into a structured JSON format matching this schema:
-        {json.dumps(schema)}
-        
-        Receipt Text:
-        {text}
-        """
+        prompt = get_extract_receipt_data_prompt(
+            schema_json=json.dumps(schema),
+            text=text
+        )
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,
@@ -97,22 +99,10 @@ class ReceiptProcessingAgent:
     def _normalize_names(self, items: list) -> dict:
         names = [item["full_name"] for item in items]
         schema = NormalizationResult.model_json_schema()
-        prompt = f"""
-        You are a product name normalization expert.
-        I will give you a list of product names from a receipt.
-        For each product name, you must:
-        1. Translate it to English.
-        2. Strip all brands.
-        3. Strip all weights and measurements (e.g. 1kg, 500ml, size L).
-        4. Strip any irrelevant specifications.
-        For example, "Monitor Samsung 24 inch" -> "Monitor", "Coffee on oat milk 200ml" -> "Coffee", "Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро" -> "Trifle".
-        
-        Output MUST be a JSON matching this schema:
-        {json.dumps(schema)}
-        
-        Product Names to normalize:
-        {json.dumps(names, ensure_ascii=False)}
-        """
+        prompt = get_normalize_names_prompt(
+            schema_json=json.dumps(schema),
+            names_json=json.dumps(names, ensure_ascii=False)
+        )
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,
@@ -123,23 +113,16 @@ class ReceiptProcessingAgent:
         return json.loads(response.text)
         
     def _summarize_receipt(self, receipt_data: dict) -> str:
-        prompt = f"""
-        You are an accounting assistant. Please create a friendly, well-formatted Markdown summary of the following receipt.
-        Include the Merchant, Date, Total Amount, and a markdown table of the items (showing their name and price).
-        
-        Receipt Data:
-        {json.dumps(receipt_data, ensure_ascii=False)}
-        """
+        prompt = get_summarize_receipt_prompt(
+            receipt_data_json=json.dumps(receipt_data, ensure_ascii=False)
+        )
         response = self.client.models.generate_content(model=self.model_name, contents=prompt)
         return response.text
 
     def _create_brief_description(self, final_data: dict) -> str:
-        prompt = f"""
-        Provide a concise, 1-2 sentence description of this receipt, mentioning the merchant, total amount, and general category of items. Maybe additional useful information
-
-        Receipt Data:
-        {json.dumps(final_data, ensure_ascii=False)}
-        """
+        prompt = get_create_brief_description_prompt(
+            final_data_json=json.dumps(final_data, ensure_ascii=False)
+        )
         response = self.client.models.generate_content(model=self.model_name, contents=prompt)
         return response.text
 
@@ -238,19 +221,11 @@ class ReceiptProcessingAgent:
         readable_final_data = copy.deepcopy(final_data)
         if 'user_id' in readable_final_data:
             readable_final_data.pop('user_id')
-        prompt = f"""
-        You are an accounting assistant. The user rejected the parsed receipt data and provided feedback.
-        Please apply their feedback to correct the structured JSON.
-        
-        Current Receipt Data:
-        {json.dumps(readable_final_data, ensure_ascii=False)}
-        
-        User Feedback:
-        {feedback}
-        
-        Output MUST match this schema exactly:
-        {json.dumps(schema)}
-        """
+        prompt = get_fix_receipt_data_prompt(
+            readable_final_data_json=json.dumps(readable_final_data, ensure_ascii=False),
+            feedback=feedback,
+            schema_json=json.dumps(schema)
+        )
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,

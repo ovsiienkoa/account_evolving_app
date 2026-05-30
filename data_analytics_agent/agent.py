@@ -6,6 +6,10 @@ from google.cloud import bigquery
 from google import genai
 from google.genai import types
 import hashlib
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prompts import get_generate_sql_prompt, get_format_answer_prompt, get_commit_to_history_prompt
 
 DEBUG = False
 
@@ -83,38 +87,13 @@ class DataAnalyticsAgent:
         if not DEBUG:
             schema_context = self._gather_context()
             
-            prompt = f"""
-            You are an expert Google BigQuery data analyst.
-            Your task is to convert the user's natural language question into a valid BigQuery SQL statement.
-            
-            Here is the current live state of the project's database (Tables, schemas, and custom Functions/UDFs) pulled directly from BigQuery:
-            ---
-            {schema_context}
-            ---
-            User's ID in main database, all user could only see thei own data, if the table contains user_id in any from you absolutely should filter data by user_id select the next id:
-            {user_id}
-            User's Question:
-            {user_query}
-            
-            Keep in mind, that you can perform a vector search on unique_items table or main table for getting exact ids of semantically appropriate items. 
-            Example of vector search using AI.GENERATE_EMBEDDING:
-            SELECT base.id, base.name
-            FROM VECTOR_SEARCH(
-            TABLE `{self.project_id}.{self.bq_dataset}.unique_items`,
-            'embedding',
-            (SELECT embedding as embedding FROM AI.GENERATE_EMBEDDING(MODEL `{self.project_id}.{self.bq_dataset}.embedding_model`, (SELECT ‘product of interest text representation’ AS content),   STRUCT('CLUSTERING' AS task_type, 768 AS output_dimensionality)),
-            top_k => 5
+            prompt = get_generate_sql_prompt(
+                schema_context=schema_context,
+                user_id=user_id,
+                user_query=user_query,
+                project_id=self.project_id,
+                bq_dataset=self.bq_dataset
             )
-            Example of getting exact objects from 'items' field in 'main' table
-            SELECT
-                item
-            FROM
-                `{self.project_id}.{self.bq_dataset}.main`,
-            UNNEST(items) AS item
-
-            Please output ONLY a valid BigQuery SQL query. Do not wrap it in markdown code blocks (e.g. do not use ```sql). 
-            Do not explain the query. Provide just the raw string of the query itself.
-            """
             
             if error_feedback:
                 prompt += error_feedback
@@ -199,35 +178,12 @@ class DataAnalyticsAgent:
             raise e
 
     def format_answer(self, user_query: str, sql_query: str, sql_output: list, feedback: str = None) -> dict:
-        prompt = f"""
-        You are an expert data analyst. You need to answer the user's question based on the SQL query that was run and the resulting output data.
-        
-        User's Question: {user_query}
-        SQL Query Executed: {sql_query}
-        SQL Output Data (First 5 rows): {json.dumps(sql_output[:5], default=str)}
-        """
-        
-        if feedback:
-            prompt += f"\nUser Feedback on previous analysis: {feedback}\nPlease adjust your analysis according to this feedback."
-            
-        prompt += """
-        
-        Respond with a JSON object exactly matching this schema:
-        {
-            "text_response": "A friendly, clear summary answering the user's question based on the data.",
-            "plot_config": null  // Set to null if a plot is not useful or there's not enough data.
-        }
-        
-        If a plot would be helpful (e.g. for comparing categories or showing a trend), replace `null` with:
-        {
-            "type": "bar" | "pie" | "line",
-            "title": "Title of the chart",
-            "x_col": "column_name_for_x_axis",  // The column name from SQL Output to use for the X-axis (or pie slices)
-            "y_col": "column_name_for_y_axis",  // The column name from SQL Output to use for numerical values
-            "x_label": "Label for X axis",
-            "y_label": "Label for Y axis"
-        }
-        """
+        prompt = get_format_answer_prompt(
+            user_query=user_query,
+            sql_query=sql_query,
+            sql_output=sql_output,
+            feedback=feedback
+        )
         if not DEBUG:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -283,13 +239,10 @@ class DataAnalyticsAgent:
             print("BigQuery client not initialized. Cannot commit to history.")
             return False
             
-        prompt = f"""
-        Analyze this interaction:
-        User Question: {user_query}
-        SQL Solution: {sql_query}
-        
-        Provide a concise 1-2 sentence explanation of WHY this SQL query is the correct solution and WHAT kind of solution it is (e.g., vector search, aggregation, grouping).
-        """
+        prompt = get_commit_to_history_prompt(
+            user_query=user_query,
+            sql_query=sql_query
+        )
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
