@@ -10,3 +10,4 @@ wheels/
 .venv
 .env
 replay_prompt.txt
+.streamlit/secrets.toml
