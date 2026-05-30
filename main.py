@@ -187,7 +187,6 @@ def main():
                                 response, sql_output = data_analytics_agent.generate_and_execute_sql(prompt, user_id=st.session_state.user_id)
                             
                             sql_query = response["data"]["generated_sql"]
-                            st.write(response["text"])
                                 
                             with st.spinner("Analyzing results..."):
                                 analysis = data_analytics_agent.format_answer(prompt, sql_query, sql_output)

@@ -20,6 +20,7 @@ class TestReceiptProcessingAgent(unittest.TestCase):
             "GCP_PROJECT_ID": "test-project",
             "GCP_LOCATION": "us",
             "VERTEX_LOCATION": "us-central1",
+            "DUMB_MODEL_LOCATION": "us-central1",
             "GCP_PROCESSOR_ID": "test-processor",
             "BQ_DATASET": "test-dataset"
         }
@@ -68,6 +69,7 @@ class TestReceiptProcessingAgent(unittest.TestCase):
         self.agent._extract_receipt_data.assert_called_once_with("\nExtracted data from image (Document):\nOCR text from single image\n")
         self.assertEqual(res["text"], "Summary content")
         self.assertEqual(res["data"]["total_amount"], 100.0)
+        self.assertEqual(res["data"]["items"][0]["normalized_name"], "test item")
 
     @patch('receipt_processing_agent.agent.documentai.RawDocument')
     @patch('receipt_processing_agent.agent.documentai.ProcessRequest')
@@ -97,7 +99,7 @@ class TestReceiptProcessingAgent(unittest.TestCase):
         self.assertIn("img1.png", extracted_text)
         self.assertIn("img2.jpg", extracted_text)
 
-    @patch('pypdf.PdfReader')
+    @patch('receipt_processing_agent.agent.PdfReader')
     def test_pdf_processing(self, mock_pdf_reader):
         # Mock PdfReader behavior
         mock_page = MagicMock()

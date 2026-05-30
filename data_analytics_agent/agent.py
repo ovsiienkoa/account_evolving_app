@@ -8,6 +8,7 @@ from google.genai import types
 import hashlib
 import sys
 import os
+import pandas as pd
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prompts import get_generate_sql_prompt, get_format_answer_prompt, get_commit_to_history_prompt
 
@@ -16,13 +17,13 @@ DEBUG = False
 class DataAnalyticsAgent:
     def __init__(self, config: dict):
         self.project_id = config.get("GCP_PROJECT_ID", "")
-        self.vertex_location = config.get("VERTEX_LOCATION", "")
+        self.vertex_location = config.get("SMART_MODEL_LOCATION", "")
         self.bq_dataset = config.get("BQ_DATASET", "")
         
         assert all([self.project_id, self.vertex_location, self.bq_dataset]), "Missing GCP credentials in config"
         
         self.client = genai.Client(vertexai=True, project=self.project_id, location=self.vertex_location)
-        self.model_name = "gemini-2.5-flash"
+        self.model_name = "gemini-3.1-flash-lite"
         self.bq_client = bigquery.Client(project=self.project_id) if self.project_id else None
 
     def _gather_context(self) -> str:
@@ -238,23 +239,80 @@ class DataAnalyticsAgent:
         if not plot_config or not sql_output:
             return None
             
+        df = pd.DataFrame(sql_output)
+        
         plot_type = plot_config.get("type", "bar")
         title = plot_config.get("title", "")
-        x_col = plot_config.get("x_col", "")
-        y_col = plot_config.get("y_col", "")
         
-        # Extract data from sql_output based on x_col and y_col
-        x = [row.get(x_col) for row in sql_output] if x_col else []
-        y = [row.get(y_col) for row in sql_output] if y_col else []
+        # Build keyword arguments for Plotly Express dynamically
+        kwargs = {}
+        if title:
+            kwargs["title"] = title
+            
+        # Map configuration parameters to plotly express argument names.
+        # Check if the values match columns in the dataframe before using them.
+        col_mappings = {
+            "x_col": "x",
+            "y_col": "y",
+            "color_col": "color",
+            "size_col": "size",
+            "hover_name": "hover_name",
+            "facet_row": "facet_row",
+            "facet_col": "facet_col"
+        }
+        
+        for config_key, px_arg in col_mappings.items():
+            val = plot_config.get(config_key)
+            if val:
+                if val in df.columns:
+                    kwargs[px_arg] = val
+                else:
+                    # Ignore or fallback if column is not present
+                    pass
+                    
+        # Handle non-column arguments (like barmode)
+        if "barmode" in plot_config:
+            kwargs["barmode"] = plot_config["barmode"]
+            
+        # Handle labels mapping in plotly express
+        labels = {}
+        if plot_config.get("x_col") and plot_config.get("x_label"):
+            labels[plot_config["x_col"]] = plot_config["x_label"]
+        if plot_config.get("y_col") and plot_config.get("y_label"):
+            labels[plot_config["y_col"]] = plot_config["y_label"]
+        if plot_config.get("color_col") and plot_config.get("color_label"):
+            labels[plot_config["color_col"]] = plot_config["color_label"]
+            
+        if labels:
+            kwargs["labels"] = labels
+            
         try:
             if plot_type == "bar":
-                fig = px.bar(x=x, y=y, title=title, labels={"x": plot_config.get("x_label", ""), "y": plot_config.get("y_label", "")})
+                fig = px.bar(df, **kwargs)
             elif plot_type == "pie":
-                fig = px.pie(names=x, values=y, title=title)
+                # Pie charts use names and values instead of x and y
+                pie_kwargs = {}
+                if title:
+                    pie_kwargs["title"] = title
+                if plot_config.get("x_col") and plot_config["x_col"] in df.columns:
+                    pie_kwargs["names"] = plot_config["x_col"]
+                if plot_config.get("y_col") and plot_config["y_col"] in df.columns:
+                    pie_kwargs["values"] = plot_config["y_col"]
+                if plot_config.get("hover_name") and plot_config["hover_name"] in df.columns:
+                    pie_kwargs["hover_name"] = plot_config["hover_name"]
+                fig = px.pie(df, **pie_kwargs)
             elif plot_type == "line":
-                fig = px.line(x=x, y=y, title=title, labels={"x": plot_config.get("x_label", ""), "y": plot_config.get("y_label", "")})
+                fig = px.line(df, **kwargs)
+            elif plot_type == "scatter":
+                fig = px.scatter(df, **kwargs)
+            elif plot_type == "histogram":
+                fig = px.histogram(df, **kwargs)
+            elif plot_type == "box":
+                fig = px.box(df, **kwargs)
+            elif plot_type == "area":
+                fig = px.area(df, **kwargs)
             else:
-                fig = px.bar(x=x, y=y, title=title)
+                fig = px.bar(df, **kwargs)
         except Exception as e:
             print(f"Error generating plot: {e}")
             fig = None

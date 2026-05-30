@@ -43,12 +43,12 @@ class ReceiptProcessingAgent:
     def __init__(self, config: dict):
         self.project_id = config.get("GCP_PROJECT_ID", "")
         self.location = config.get("GCP_LOCATION", "")
-        self.vertex_location = config.get("VERTEX_LOCATION", "")
+        self.vertex_location = config.get("DUMB_MODEL_LOCATION", "")
         self.processor_id = config.get("GCP_PROCESSOR_ID", "")
         self.bq_dataset = config.get("BQ_DATASET", "")
         assert all([self.project_id, self.location, self.processor_id, self.vertex_location]), "No GCP credentials provided"
 
-        self.model_name = "gemini-2.5-flash-lite"
+        self.model_name = "gemini-2.5-flash"
         self.embeding_model_name = 'gemini-embedding-001'
         self.embeding_config = types.EmbedContentConfig(
             output_dimensionality=768,
@@ -193,7 +193,7 @@ class ReceiptProcessingAgent:
                 final_items.append({
                     "id": md5_hash,
                     "full_name": orig_name,
-
+                    "normalized_name": norm_name,
                     "price": item["price"],
                     "currency": item["currency"],
                 })
@@ -207,7 +207,36 @@ class ReceiptProcessingAgent:
                 "items": final_items
             }
         else:
-            final_data = {'transaction_date': '2025-08-11', 'user_id': user_id or '0', 'merchant': 'ФОП Семененко С.А. ()', 'total_amount': 646.8, 'currency': 'UAH', 'items': [{'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Пінчер з Вишнею 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Солона карамель 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}]}
+            final_data = {
+                'transaction_date': '2025-08-11',
+                'user_id': user_id or '0',
+                'merchant': 'ФОП Семененко С.А. ()',
+                'total_amount': 646.8,
+                'currency': 'UAH',
+                'items': [
+                    {
+                        'id': '9c5192b6cb3a10cd92e7f421162891df',
+                        'full_name': 'Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро',
+                        'normalized_name': 'Trifle',
+                        'price': 215.6,
+                        'currency': 'UAH'
+                    },
+                    {
+                        'id': '9c5192b6cb3a10cd92e7f421162891df',
+                        'full_name': 'Трайфл Пінчер з Вишнею 160г, шт Кондитер Дніпро',
+                        'normalized_name': 'Trifle',
+                        'price': 215.6,
+                        'currency': 'UAH'
+                    },
+                    {
+                        'id': '9c5192b6cb3a10cd92e7f421162891df',
+                        'full_name': 'Трайфл Солона карамель 160г, шт Кондитер Дніпро',
+                        'normalized_name': 'Trifle',
+                        'price': 215.6,
+                        'currency': 'UAH'
+                    }
+                ]
+            }
         
         readable_final_data = copy.deepcopy(final_data)
         if 'user_id' in readable_final_data:
@@ -280,6 +309,7 @@ class ReceiptProcessingAgent:
             final_items.append({
                 "id": md5_hash,
                 "full_name": orig_name,
+                "normalized_name": norm_name,
                 "price": item["price"],
                 "currency": item["currency"],
             })

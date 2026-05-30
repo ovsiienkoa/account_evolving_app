@@ -57,14 +57,20 @@ def get_format_answer_prompt(user_query: str, sql_query: str, sql_output: list, 
             "plot_config": null  // Set to null if a plot is not useful or there's not enough data.
         }
         
-        If a plot would be helpful (e.g. for comparing categories or showing a trend), replace `null` with:
+        If a plot would be helpful (e.g. for comparing categories, showing a trend, grouping data, or correlation), replace `null` with:
         {
-            "type": "bar" | "pie" | "line",
+            "type": "bar" | "pie" | "line" | "scatter" | "histogram" | "box" | "area",
             "title": "Title of the chart",
-            "x_col": "column_name_for_x_axis",  // The column name from SQL Output to use for the X-axis (or pie slices)
-            "y_col": "column_name_for_y_axis",  // The column name from SQL Output to use for numerical values
+            "x_col": "column_name_for_x_axis",  // The column name from SQL Output to use for the X-axis (or pie slices, box categories, etc.)
+            "y_col": "column_name_for_y_axis",  // The column name from SQL Output to use for numerical values (e.g. height of bars, line points, pie values)
             "x_label": "Label for X axis",
-            "y_label": "Label for Y axis"
+            "y_label": "Label for Y axis",
+            "color_col": "column_name_for_color", // Optional: The column name from SQL Output to group/color-code data by (e.g. weekday group, category)
+            "size_col": "column_name_for_size", // Optional: The column name for marker sizes (useful for scatter plots)
+            "hover_name": "column_name_for_hover_labels", // Optional: The column name to use for hover tooltips/titles
+            "barmode": "group" | "stack" | "relative", // Optional: How bars are positioned in "bar" chart (defaults to "group")
+            "facet_row": "column_name_for_facet_row", // Optional: The column name to split plots vertically into subplots
+            "facet_col": "column_name_for_facet_col" // Optional: The column name to split plots horizontally into subplots
         }
         """
     return prompt

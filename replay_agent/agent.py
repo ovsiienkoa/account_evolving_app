@@ -10,13 +10,13 @@ from prompts import get_analyze_history_prompt, get_process_custom_prompt
 class ReplayAgent:
     def __init__(self, config: dict):
         self.project_id = config.get("GCP_PROJECT_ID", "")
-        self.vertex_location = config.get("VERTEX_LOCATION", "")
+        self.vertex_location = config.get("SMART_MODEL_LOCATION", "")
         self.bq_dataset = config.get("BQ_DATASET", "")
         
         assert all([self.project_id, self.vertex_location, self.bq_dataset]), "Missing GCP credentials in config"
         
         self.client = genai.Client(vertexai=True, project=self.project_id, location=self.vertex_location)
-        self.model_name = "gemini-2.5-flash"
+        self.model_name = "gemini-3.1-flash-lite"
         self.bq_client = bigquery.Client(project=self.project_id) if self.project_id else None
 
     def _gather_context(self) -> str:
