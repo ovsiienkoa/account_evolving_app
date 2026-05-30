@@ -56,7 +56,14 @@ def main():
                 if "data" in msg:
                     st.json(msg["data"])
                 if "media" in msg and msg["media"]:
-                    st.image(msg["media"], caption="Uploaded Image")
+                    if isinstance(msg["media"], list):
+                        for media_item in msg["media"]:
+                            if media_item["mime_type"] in ["image/png", "image/jpeg", "image/jpg"]:
+                                st.image(media_item["content"], caption=media_item.get("name", "Uploaded Image"))
+                            else:
+                                st.write(f"📄 {media_item.get('name', 'Document')} ({media_item['mime_type']})")
+                    else:
+                        st.image(msg["media"], caption="Uploaded Image")
                 if "plot_config" in msg and msg["plot_config"]:
                     fig = data_analytics_agent.make_plot(msg["plot_config"], msg.get("sql_output"))
                     if fig:
@@ -88,7 +95,7 @@ def main():
                                 st.session_state[chat_key].append({"role": "assistant", "content": response["text"], "data": response["data"]})
                                 st.rerun()
 
-            uploaded_file = st.file_uploader("Upload Receipt (Image)", type=["png", "jpg", "jpeg"])
+            uploaded_files = st.file_uploader("Upload Receipt (Image/PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True)
         elif agent_choice == "Data Analytics Agent":
             if st.session_state.get("pending_analysis_data"):
                 st.info("You have a pending analysis to review.")
@@ -129,31 +136,42 @@ def main():
                                 
                                 st.session_state[chat_key].append(agent_msg)
                                 st.rerun()
-            uploaded_file = None
+            uploaded_files = None
 
         prompt = st.chat_input("Type your message here...")
 
-        if prompt or (uploaded_file and st.button("Submit Upload")):
-            user_content = prompt if prompt else "Uploaded a file."
+        if prompt or (uploaded_files and st.button("Submit Upload")):
+            user_content = prompt if prompt else f"Uploaded {len(uploaded_files)} file(s)."
             
             with st.chat_message("user"):
                 st.write(user_content)
-                if uploaded_file:
-                    st.image(uploaded_file)
+                if uploaded_files:
+                    for f in uploaded_files:
+                        if f.type in ["image/png", "image/jpeg", "image/jpg"]:
+                            st.image(f, caption=f.name)
+                        else:
+                            st.write(f"📄 {f.name} ({f.type})")
             
             user_msg = {"role": "user", "content": user_content}
-            if uploaded_file:
-                user_msg["media"] = uploaded_file.getvalue()
+            if uploaded_files:
+                user_msg["media"] = [{"content": f.getvalue(), "mime_type": f.type, "name": f.name} for f in uploaded_files]
                 
             st.session_state[chat_key].append(user_msg)
 
             with st.chat_message("assistant"):
                 if agent_choice == "Receipt Processing Agent":
-                    if uploaded_file or prompt:
+                    if uploaded_files or prompt:
+                        files_list = []
+                        if uploaded_files:
+                            for f in uploaded_files:
+                                files_list.append({
+                                    "content": f.getvalue(),
+                                    "mime_type": f.type,
+                                    "name": f.name
+                                })
                         response = receipt_agent.process_receipt(
-                            image_bytes=uploaded_file.getvalue() if uploaded_file else None, 
-                            mime_type=uploaded_file.type if uploaded_file else None, 
-                            text_input=prompt if not uploaded_file else None,
+                            files=files_list,
+                            text_input=prompt,
                             user_id=st.session_state.user_id
                         )
                         st.session_state.pending_receipt_data = response.get("data")

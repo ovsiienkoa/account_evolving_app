@@ -12,3 +12,4 @@ wheels/
 replay_prompt.txt
 .streamlit/secrets.toml
 tests/sql_inj_test.py
+tests/media/*

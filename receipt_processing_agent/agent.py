@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import sys
 import os
+import io
+from pypdf import PdfReader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prompts import get_extract_receipt_data_prompt, get_normalize_names_prompt, get_summarize_receipt_prompt, get_create_brief_description_prompt, get_fix_receipt_data_prompt
 
@@ -81,6 +83,23 @@ class ReceiptProcessingAgent:
 
             return result.document.text
 
+    def _extract_text_from_pdf(self, pdf_bytes: bytes) -> str:
+        """
+        Extracts raw text from a PDF file using pypdf.
+        """
+
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            text_list = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_list.append(page_text)
+            return "\n".join(text_list)
+        except Exception as e:
+            print(f"Error extracting text from PDF: {e}")
+            return ""
+
     def _extract_receipt_data(self, text: str) -> dict:
         schema = ReceiptExtraction.model_json_schema()
         prompt = get_extract_receipt_data_prompt(
@@ -126,14 +145,30 @@ class ReceiptProcessingAgent:
         response = self.client.models.generate_content(model=self.model_name, contents=prompt)
         return response.text
 
-    def process_receipt(self, image_bytes: bytes = None, mime_type: str = None, text_input: str = None, user_id: str = None) -> dict:
+    def process_receipt(self, image_bytes: bytes = None, mime_type: str = None, text_input: str = None, user_id: str = None, files: List[dict] = None) -> dict:
         """
         Complete flow: Extract text -> Parse with LLM -> Normalize Names -> Summarize
         """
         if not DEBUG:
             text_repr = text_input + "\n" if text_input else ""
+            
+            all_files = []
+            if files:
+                all_files.extend(files)
             if image_bytes:
-                text_repr += "Extracted data from image:\n" + self.extract_text_from_image(image_bytes, mime_type)
+                all_files=[{"content": image_bytes, "mime_type": mime_type}]
+                
+            for file_info in all_files:
+                f_bytes = file_info.get("content")
+                f_mime = file_info.get("mime_type") or "image/jpeg"
+                f_name = file_info.get("name", "Document")
+                
+                if f_mime == "application/pdf":
+                    pdf_text = self._extract_text_from_pdf(f_bytes)
+                    text_repr += f"\nExtracted data from PDF ({f_name}):\n{pdf_text}\n"
+                elif f_mime.startswith("image/"):
+                    image_text = self.extract_text_from_image(f_bytes, f_mime)
+                    text_repr += f"\nExtracted data from image ({f_name}):\n{image_text}\n"
         else:
             text_repr = "" # Not used in debug
 
@@ -172,7 +207,7 @@ class ReceiptProcessingAgent:
                 "items": final_items
             }
         else:
-            final_data = {'transaction_date': '2025-08-11', 'user_id': user_id or '0', 'merchant': 'ФОП Семененко С.А. (3160412009)', 'total_amount': 646.8, 'currency': 'UAH', 'items': [{'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Пінчер з Вишнею 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Солона карамель 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}]}
+            final_data = {'transaction_date': '2025-08-11', 'user_id': user_id or '0', 'merchant': 'ФОП Семененко С.А. ()', 'total_amount': 646.8, 'currency': 'UAH', 'items': [{'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Пінчер з Вишнею 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}, {'id': '9c5192b6cb3a10cd92e7f421162891df', 'full_name': 'Трайфл Солона карамель 160г, шт Кондитер Дніпро', 'price': 215.6, 'currency': 'UAH'}]}
         
         readable_final_data = copy.deepcopy(final_data)
         if 'user_id' in readable_final_data:
