@@ -115,6 +115,7 @@ def main():
                 with col2:
                     with st.form("analysis_feedback_form"):
                         feedback = st.text_input("Or provide feedback to fix it:")
+                        st.caption("Note: The 'Reject & Fix' button does not requery the dataset; it only updates the output based on your feedback. To requery the dataset, please write a new query in the chat input below.")
                         submitted = st.form_submit_button("Reject & Fix")
                         if submitted and feedback:
                             with st.spinner("Applying feedback..."):

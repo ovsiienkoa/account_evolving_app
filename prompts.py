@@ -19,6 +19,8 @@ def get_generate_sql_prompt(schema_context: str, user_id: str, user_query: str, 
             {user_query}
             
             Keep in mind, that you can perform a vector search on unique_items table or main table for getting exact ids of semantically appropriate items. 
+            Before querying vectors, you must guess the most appropriate word in English (not the user's original language) representing the query, and use that English word for the vector search.
+            
             Example of vector search using AI.GENERATE_EMBEDDING:
             SELECT base.id, base.name, distance
             FROM VECTOR_SEARCH(
