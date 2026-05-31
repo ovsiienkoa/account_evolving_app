@@ -38,7 +38,7 @@ class TestReceiptProcessingAgent(unittest.TestCase):
             "total_amount": 100.0,
             "currency": "USD",
             "items": [
-                {"full_name": "Test Item", "price": 100.0, "currency": "USD"}
+                {"full_name": "Test Item", "price": 100.0, "currency": "USD", "uom": "pcs", "measurement": 1.0}
             ]
         })
         self.agent._normalize_names = MagicMock(return_value={
@@ -70,6 +70,8 @@ class TestReceiptProcessingAgent(unittest.TestCase):
         self.assertEqual(res["text"], "Summary content")
         self.assertEqual(res["data"]["total_amount"], 100.0)
         self.assertEqual(res["data"]["items"][0]["normalized_name"], "test item")
+        self.assertEqual(res["data"]["items"][0]["uom"], "pcs")
+        self.assertEqual(res["data"]["items"][0]["measurement"], 1.0)
 
     @patch('receipt_processing_agent.agent.documentai.RawDocument')
     @patch('receipt_processing_agent.agent.documentai.ProcessRequest')
@@ -122,6 +124,48 @@ class TestReceiptProcessingAgent(unittest.TestCase):
         extracted_text = self.agent._extract_receipt_data.call_args[0][0]
         self.assertIn("Text from PDF page", extracted_text)
         self.assertIn("receipt.pdf", extracted_text)
+
+    def test_commit_receipt_logging(self):
+        # Setup mocks
+        self.agent.bq_client = MagicMock()
+        
+        # Mock BQ query result for checking existing unique items
+        mock_query_job = MagicMock()
+        mock_query_job.__iter__.return_value = []
+        self.agent.bq_client.query.return_value = mock_query_job
+        
+        # Mock embedding response
+        mock_embedding = MagicMock()
+        mock_embedding.values = [0.1, 0.2, 0.3]
+        mock_embed_res = MagicMock()
+        mock_embed_res.embeddings = [mock_embedding]
+        self.agent.client.models.embed_content.return_value = mock_embed_res
+        
+        # Mock insert_rows_json to return empty list (no errors)
+        self.agent.bq_client.insert_rows_json.return_value = []
+        
+        # Call commit_receipt
+        final_data = {
+            "transaction_date": "2026-05-30",
+            "user_id": "user123",
+            "merchant": "Test Merchant",
+            "total_amount": 100.0,
+            "currency": "USD",
+            "items": [
+                {"id": "item1", "full_name": "Test Item", "normalized_name": "test item", "price": 100.0, "currency": "USD", "uom": "pcs", "measurement": 1.0}
+            ]
+        }
+        
+        with self.assertLogs('receipt_processing_agent.agent', level='INFO') as log:
+            success = self.agent.commit_receipt(final_data)
+            
+            # Assertions
+            self.assertTrue(success)
+            
+            # Verify logs contain the expected messages
+            log_output = "\n".join(log.output)
+            self.assertIn("Successfully inserted unique item: id=item1, name=test item", log_output)
+            self.assertIn("Successfully appended row to main table: transaction_date=2026-05-30, merchant=Test Merchant, total_amount=100.0 USD", log_output)
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,8 @@ class ReceiptItem(BaseModel):
     full_name: str = Field(description="The exact name of the product from the receipt.")
     price: float = Field(description="The total price for this item.")
     currency: str = Field(description="The 3-letter currency code.")
+    uom: Optional[str] = Field(default="None", description="The unit of measurement (e.g., kg, l, pcs, packs) if available.")
+    measurement: Optional[float] = Field(default=1, description="The numeric measurement value (e.g., 1.5, 500, 1) corresponding to the unit of measurement.")
 
 class ReceiptExtraction(BaseModel):
     transaction_date: str = Field(description="The date of the transaction in YYYY-MM-DD format.")
@@ -209,6 +211,8 @@ class ReceiptProcessingAgent:
                         "normalized_name": norm_name,
                         "price": item["price"],
                         "currency": item["currency"],
+                        "uom": item.get("uom"),
+                        "measurement": item.get("measurement"),
                     })
                     
                 final_data = {
@@ -237,21 +241,27 @@ class ReceiptProcessingAgent:
                         'full_name': 'Трайфл Маракуя-Ананас 160г, шт Кондитер Дніпро',
                         'normalized_name': 'Trifle',
                         'price': 215.6,
-                        'currency': 'UAH'
+                        'currency': 'UAH',
+                        'uom': 'g',
+                        'measurement': 160.0
                     },
                     {
                         'id': '9c5192b6cb3a10cd92e7f421162891df',
                         'full_name': 'Трайфл Пінчер з Вишнею 160г, шт Кондитер Дніпро',
                         'normalized_name': 'Trifle',
                         'price': 215.6,
-                        'currency': 'UAH'
+                        'currency': 'UAH',
+                        'uom': 'g',
+                        'measurement': 160.0
                     },
                     {
                         'id': '9c5192b6cb3a10cd92e7f421162891df',
                         'full_name': 'Трайфл Солона карамель 160г, шт Кондитер Дніпро',
                         'normalized_name': 'Trifle',
                         'price': 215.6,
-                        'currency': 'UAH'
+                        'currency': 'UAH',
+                        'uom': 'g',
+                        'measurement': 160.0
                     }
                 ]
             }
@@ -266,6 +276,8 @@ class ReceiptProcessingAgent:
                     "full_name": item["full_name"],
                     "price": item["price"],
                     "currency": item["currency"],
+                    "uom": item.get("uom"),
+                    "measurement": item.get("measurement"),
                 }
                 for item in readable_final_data['items']
             ]
@@ -337,6 +349,8 @@ class ReceiptProcessingAgent:
                     "normalized_name": norm_name,
                     "price": item["price"],
                     "currency": item["currency"],
+                    "uom": item.get("uom"),
+                    "measurement": item.get("measurement"),
                 })
                 
             final_data_corrected = {
@@ -353,7 +367,13 @@ class ReceiptProcessingAgent:
                 readable_final_data.pop('user_id')
                 
             readable_final_data['items'] = [
-                {"full_name": item["full_name"], "price": item["price"], "currency": item["currency"]}
+                {
+                    "full_name": item["full_name"],
+                    "price": item["price"],
+                    "currency": item["currency"],
+                    "uom": item.get("uom"),
+                    "measurement": item.get("measurement"),
+                }
                 for item in readable_final_data['items']
             ]
             summary = self._summarize_receipt(readable_final_data)
@@ -436,7 +456,9 @@ class ReceiptProcessingAgent:
                         "id": i["id"],
                         "full_name": i["full_name"],
                         "price": float(i["price"]),
-                        "currency": i["currency"]
+                        "currency": i["currency"],
+                        "uom": i.get("uom"),
+                        "measurement": float(i["measurement"]) if i.get("measurement") is not None else None
                     } for i in final_data.get("items", [])
                 ],
                 "receipt_embedding": receipt_embedding
