@@ -1,16 +1,24 @@
 import streamlit as st
-import json
-import uuid
-import sys
-import os
 import hashlib
 import hmac
-from dotenv import dotenv_values
+import dotenv
+import os
 
 from receipt_processing_agent.agent import ReceiptProcessingAgent
 from data_analytics_agent.agent import DataAnalyticsAgent
 
-config = dotenv_values(".env")
+dotenv.load_dotenv()
+
+config = {
+    "GCP_PROJECT_ID": os.getenv("GCP_PROJECT_ID"),
+    "GCP_LOCATION": os.getenv("GCP_LOCATION"),
+    "SMART_MODEL_LOCATION": os.getenv("SMART_MODEL_LOCATION"),
+    "DUMB_MODEL_LOCATION": os.getenv("DUMB_MODEL_LOCATION"),
+    "GCP_PROCESSOR_ID": os.getenv("GCP_PROCESSOR_ID"),
+    "BQ_DATASET": os.getenv("BQ_DATASET"),
+    "USER_SECRET": os.getenv("USER_SECRET"),
+}
+
 receipt_agent = ReceiptProcessingAgent(config)
 data_analytics_agent = DataAnalyticsAgent(config)
 def main():
@@ -34,10 +42,10 @@ def main():
             else:
                 st.error("Could not retrieve user ID from Google.")
 
-        st.sidebar.title(f"User: {st.session_state.user_id}")
         if st.sidebar.button("Logout"):
             st.session_state.user_id = None
             st.logout()
+
 
         st.title("Agent Chats")
 
@@ -209,7 +217,7 @@ def main():
                                 fig = data_analytics_agent.make_plot(agent_msg["plot_config"], agent_msg.get("sql_output"))
                                 if fig:
                                     st.plotly_chart(fig)
-                        except ValueError as e:
+                        except Exception as e:
                             st.error(str(e))
                             agent_msg = {"role": "assistant", "content": str(e)}
                     else:

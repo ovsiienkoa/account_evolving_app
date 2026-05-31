@@ -101,12 +101,14 @@ class DataAnalyticsAgent:
                 
             print("Generating SQL query...")
 
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            
-            sql_query = response.text.strip()
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
+                sql_query = response.text.strip()
+            except Exception as e:
+                raise RuntimeError(f"Gemini API error during SQL generation: {e}")
         else:
             sql_query = """
             debug_sql_query
@@ -138,25 +140,34 @@ class DataAnalyticsAgent:
         error_feedback = ""
         sql_output = []
         response_dict = {}
+        last_exception = None
         
         while error_counter < 3 and not success_flag:
             print(f"Attempting SQL generation and execution (Attempt {error_counter + 1})")
-            response_dict = self.generate_sql(user_query, user_id, error_feedback)
-            sql_query = response_dict["data"]["generated_sql"]
-            
-            # Security review before execution
-            self.sql_review(sql_query, user_id)
-            
             try:
+                response_dict = self.generate_sql(user_query, user_id, error_feedback)
+                sql_query = response_dict["data"]["generated_sql"]
+                
+                # Security review before execution
+                self.sql_review(sql_query, user_id)
+                
                 sql_output = self.execute_query(sql_query)
                 success_flag = True
             except Exception as e:
-                print(f"Execution failed: {e}")
-                error_feedback += f"\n\nERROR: The query you generated failed to execute. Error: {e}\nQuery:\n{sql_query}\nPlease correct it."
+                print(f"Attempt {error_counter + 1} failed: {e}")
+                last_exception = e
+                sql_query_str = response_dict.get("data", {}).get("generated_sql", "") if 'response_dict' in locals() else ""
+                error_feedback += f"\n\nERROR: Attempt {error_counter + 1} failed. Error: {e}"
+                if sql_query_str:
+                    error_feedback += f"\nQuery:\n{sql_query_str}\nPlease correct it."
                 error_counter += 1
                 
         if not success_flag:
             print("Failed to generate executable SQL after 3 attempts.")
+            if last_exception:
+                raise last_exception
+            else:
+                raise ValueError("Failed to generate executable SQL after 3 attempts.")
             
         return response_dict, sql_output
 
@@ -216,14 +227,20 @@ class DataAnalyticsAgent:
             feedback=feedback
         )
         if not DEBUG:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
                 )
-            )
-            response_text = response.text
+                response_text = response.text
+            except Exception as e:
+                return {
+                    "text_response": f"Error: Gemini API call failed or timed out during formatting: {e}",
+                    "plot_config": None
+                }
         else:
             response_text =  """{
                 "text_response": "Analysis: Based on the provided data, your total spending across all categories is $195.5. This includes $120.5 on Groceries, $45.0 on Entertainment, and $30.0 on Transport.",

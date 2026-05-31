@@ -1,6 +1,5 @@
 from google.cloud import documentai
 from google.api_core.client_options import ClientOptions
-import uuid
 import json
 import hashlib
 import copy
@@ -106,14 +105,17 @@ class ReceiptProcessingAgent:
             schema_json=json.dumps(schema),
             text=text
         )
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
-        )
-        return json.loads(response.text)
+            return json.loads(response.text)
+        except Exception as e:
+            raise RuntimeError(f"Gemini API error during receipt data extraction: {e}")
 
     def _normalize_names(self, items: list) -> dict:
         names = [item["full_name"] for item in items]
@@ -122,28 +124,38 @@ class ReceiptProcessingAgent:
             schema_json=json.dumps(schema),
             names_json=json.dumps(names, ensure_ascii=False)
         )
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
-        )
-        return json.loads(response.text)
+            return json.loads(response.text)
+        except Exception as e:
+            raise RuntimeError(f"Gemini API error during name normalization: {e}")
         
     def _summarize_receipt(self, receipt_data: dict) -> str:
         prompt = get_summarize_receipt_prompt(
             receipt_data_json=json.dumps(receipt_data, ensure_ascii=False)
         )
-        response = self.client.models.generate_content(model=self.model_name, contents=prompt)
-        return response.text
+        try:
+            response = self.client.models.generate_content(model=self.model_name, contents=prompt)
+            return response.text
+        except Exception as e:
+            raise RuntimeError(f"Gemini API error during receipt summarization: {e}")
 
     def _create_brief_description(self, final_data: dict) -> str:
         prompt = get_create_brief_description_prompt(
             final_data_json=json.dumps(final_data, ensure_ascii=False)
         )
-        response = self.client.models.generate_content(model=self.model_name, contents=prompt)
-        return response.text
+        try:
+            response = self.client.models.generate_content(model=self.model_name, contents=prompt)
+            return response.text
+        except Exception as e:
+            raise RuntimeError(f"Gemini API error during description creation: {e}")
+
 
     def process_receipt(self, image_bytes: bytes = None, mime_type: str = None, text_input: str = None, user_id: str = None, files: List[dict] = None) -> dict:
         """
@@ -176,36 +188,42 @@ class ReceiptProcessingAgent:
             if not getattr(self, 'client', None):
                 return {"text": "Google GenAI is not initialized. Please provide GCP credentials in .env.", "data": {}}
             
-            extraction = self._extract_receipt_data(text_repr)
-            normalization = self._normalize_names(extraction.get("items", []))
-            
-            # Map normalized names back to items and add MD5 hashes
-            mappings = {m["original_name"]: m["normalized_name"] for m in normalization.get("mappings", [])}
-            
-            final_items = []
-            for item in extraction.get("items", []):
-                orig_name = item["full_name"]
-                norm_name = mappings.get(orig_name, orig_name) # fallback to original if missing
+            try:
+                extraction = self._extract_receipt_data(text_repr)
+                normalization = self._normalize_names(extraction.get("items", []))
                 
-                # Create MD5 hash of normalized name
-                md5_hash = hashlib.md5(norm_name.encode('utf-8')).hexdigest()
+                # Map normalized names back to items and add MD5 hashes
+                mappings = {m["original_name"]: m["normalized_name"] for m in normalization.get("mappings", [])}
                 
-                final_items.append({
-                    "id": md5_hash,
-                    "full_name": orig_name,
-                    "normalized_name": norm_name,
-                    "price": item["price"],
-                    "currency": item["currency"],
-                })
-                
-            final_data = {
-                "transaction_date": extraction.get("transaction_date"),
-                "user_id": user_id,
-                "merchant": extraction.get("merchant"),
-                "total_amount": extraction.get("total_amount"),
-                "currency": extraction.get("currency"),
-                "items": final_items
-            }
+                final_items = []
+                for item in extraction.get("items", []):
+                    orig_name = item["full_name"]
+                    norm_name = mappings.get(orig_name, orig_name) # fallback to original if missing
+                    
+                    # Create MD5 hash of normalized name
+                    md5_hash = hashlib.md5(norm_name.encode('utf-8')).hexdigest()
+                    
+                    final_items.append({
+                        "id": md5_hash,
+                        "full_name": orig_name,
+                        "normalized_name": norm_name,
+                        "price": item["price"],
+                        "currency": item["currency"],
+                    })
+                    
+                final_data = {
+                    "transaction_date": extraction.get("transaction_date"),
+                    "user_id": user_id,
+                    "merchant": extraction.get("merchant"),
+                    "total_amount": extraction.get("total_amount"),
+                    "currency": extraction.get("currency"),
+                    "items": final_items
+                }
+            except Exception as e:
+                return {
+                    "text": f"Error processing receipt: {e}",
+                    "data": {}
+                }
         else:
             final_data = {
                 'transaction_date': '2025-08-11',
@@ -238,105 +256,117 @@ class ReceiptProcessingAgent:
                 ]
             }
         
-        readable_final_data = copy.deepcopy(final_data)
-        if 'user_id' in readable_final_data:
-            readable_final_data.pop('user_id')
+        try:
+            readable_final_data = copy.deepcopy(final_data)
+            if 'user_id' in readable_final_data:
+                readable_final_data.pop('user_id')
+                
+            readable_final_data['items'] = [
+                {
+                    "full_name": item["full_name"],
+                    "price": item["price"],
+                    "currency": item["currency"],
+                }
+                for item in readable_final_data['items']
+            ]
             
-        readable_final_data['items'] = [
-            {
-                "full_name": item["full_name"],
-                "price": item["price"],
-                "currency": item["currency"],
+            if text_input or not DEBUG:
+                summary = self._summarize_receipt(readable_final_data)
+            else:
+                summary = """
+                Here's a summary of your receipt:
+
+                **Receipt Summary**
+
+                *   **Merchant:** ФОП Семененко С.А. ()
+                *   **Date:** 2025-08-11
+                *   **Total Amount:** 646.80 UAH
+
+                **Items Purchased:**
+
+                | Item Name             | Price (UAH) |
+                | :-------------------- | :---------- |
+                | Трайфл Маракуя-Ананас | 215.60      |
+                | Трайфл Пінчер з Вишнею | 215.60      |
+                | Трайфл Солона карамель | 215.60      |
+                """
+
+            return {
+                "text": summary,
+                "data": final_data
             }
-            for item in readable_final_data['items']
-        ]
-        
-        if text_input or not DEBUG:
-            summary = self._summarize_receipt(readable_final_data)
-        else:
-            summary = """
-            Here's a summary of your receipt:
-
-            **Receipt Summary**
-
-            *   **Merchant:** ФОП Семененко С.А. ()
-            *   **Date:** 2025-08-11
-            *   **Total Amount:** 646.80 UAH
-
-            **Items Purchased:**
-
-            | Item Name             | Price (UAH) |
-            | :-------------------- | :---------- |
-            | Трайфл Маракуя-Ананас | 215.60      |
-            | Трайфл Пінчер з Вишнею | 215.60      |
-            | Трайфл Солона карамель | 215.60      |
-            """
-
-        return {
-            "text": summary,
-            "data": final_data
-        }
+        except Exception as e:
+            return {
+                "text": f"Error during receipt summarization: {e}",
+                "data": final_data
+            }
 
     def fix_receipt_data(self, final_data: dict, feedback: str) -> dict:
         """
         Uses LLM to amend the parsed receipt data based on user feedback without reprocessing OCR.
         """
-        schema = ReceiptExtraction.model_json_schema()
-        readable_final_data = copy.deepcopy(final_data)
-        if 'user_id' in readable_final_data:
-            readable_final_data.pop('user_id')
-        prompt = get_fix_receipt_data_prompt(
-            readable_final_data_json=json.dumps(readable_final_data, ensure_ascii=False),
-            feedback=feedback,
-            schema_json=json.dumps(schema)
-        )
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-        corrected_data = json.loads(response.text)
-        
-        # We need to re-run normalization for the corrected items
-        normalization = self._normalize_names(corrected_data.get("items", []))
-        mappings = {m["original_name"]: m["normalized_name"] for m in normalization.get("mappings", [])}
-        
-        final_items = []
-        for item in corrected_data.get("items", []):
-            orig_name = item["full_name"]
-            norm_name = mappings.get(orig_name, orig_name)
-            md5_hash = hashlib.md5(norm_name.encode('utf-8')).hexdigest()
-            final_items.append({
-                "id": md5_hash,
-                "full_name": orig_name,
-                "normalized_name": norm_name,
-                "price": item["price"],
-                "currency": item["currency"],
-            })
+        try:
+            schema = ReceiptExtraction.model_json_schema()
+            readable_final_data = copy.deepcopy(final_data)
+            if 'user_id' in readable_final_data:
+                readable_final_data.pop('user_id')
+            prompt = get_fix_receipt_data_prompt(
+                readable_final_data_json=json.dumps(readable_final_data, ensure_ascii=False),
+                feedback=feedback,
+                schema_json=json.dumps(schema)
+            )
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json")
+            )
+            corrected_data = json.loads(response.text)
             
-        final_data_corrected = {
-            "transaction_date": corrected_data.get("transaction_date"),
-            "user_id": final_data.get("user_id"),
-            "merchant": corrected_data.get("merchant"),
-            "total_amount": corrected_data.get("total_amount"),
-            "currency": corrected_data.get("currency"),
-            "items": final_items
-        }
-        
-        readable_final_data = copy.deepcopy(final_data_corrected)
-        if 'user_id' in readable_final_data:
-            readable_final_data.pop('user_id')
+            # We need to re-run normalization for the corrected items
+            normalization = self._normalize_names(corrected_data.get("items", []))
+            mappings = {m["original_name"]: m["normalized_name"] for m in normalization.get("mappings", [])}
             
-        readable_final_data['items'] = [
-            {"full_name": item["full_name"], "price": item["price"], "currency": item["currency"]}
-            for item in readable_final_data['items']
-        ]
-        summary = self._summarize_receipt(readable_final_data)
-        
-        return {
-            "text": summary,
-            "data": final_data_corrected
-        }
+            final_items = []
+            for item in corrected_data.get("items", []):
+                orig_name = item["full_name"]
+                norm_name = mappings.get(orig_name, orig_name)
+                md5_hash = hashlib.md5(norm_name.encode('utf-8')).hexdigest()
+                final_items.append({
+                    "id": md5_hash,
+                    "full_name": orig_name,
+                    "normalized_name": norm_name,
+                    "price": item["price"],
+                    "currency": item["currency"],
+                })
+                
+            final_data_corrected = {
+                "transaction_date": corrected_data.get("transaction_date"),
+                "user_id": final_data.get("user_id"),
+                "merchant": corrected_data.get("merchant"),
+                "total_amount": corrected_data.get("total_amount"),
+                "currency": corrected_data.get("currency"),
+                "items": final_items
+            }
+            
+            readable_final_data = copy.deepcopy(final_data_corrected)
+            if 'user_id' in readable_final_data:
+                readable_final_data.pop('user_id')
+                
+            readable_final_data['items'] = [
+                {"full_name": item["full_name"], "price": item["price"], "currency": item["currency"]}
+                for item in readable_final_data['items']
+            ]
+            summary = self._summarize_receipt(readable_final_data)
+            
+            return {
+                "text": summary,
+                "data": final_data_corrected
+            }
+        except Exception as e:
+            return {
+                "text": f"Error fixing receipt data: {e}",
+                "data": final_data
+            }
 
     def commit_receipt(self, final_data: dict) -> bool:
         """
