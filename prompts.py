@@ -20,13 +20,22 @@ def get_generate_sql_prompt(schema_context: str, user_id: str, user_query: str, 
             
             Keep in mind, that you can perform a vector search on unique_items table or main table for getting exact ids of semantically appropriate items. 
             Example of vector search using AI.GENERATE_EMBEDDING:
-            SELECT base.id, base.name
+            SELECT base.id, base.name, distance
             FROM VECTOR_SEARCH(
             TABLE `{project_id}.{bq_dataset}.unique_items`,
             'embedding',
-            (SELECT embedding as embedding FROM AI.GENERATE_EMBEDDING(MODEL `{project_id}.{bq_dataset}.embedding_model`, (SELECT ‘product of interest text representation’ AS content),   STRUCT('CLUSTERING' AS task_type, 768 AS output_dimensionality)),
-            top_k => 5
+            (SELECT embedding as embedding FROM AI.GENERATE_EMBEDDING(MODEL `{project_id}.{bq_dataset}.embedding_model`, (SELECT ‘product of interest text representation’ AS content),   STRUCT('CLUSTERING' AS task_type, 768 AS output_dimensionality))),
+            top_k => 50
             )
+            WHERE distance < 0.275
+
+            Example of more efficient error proof query with use of TVF:
+            SELECT * FROM `{project_id}.{bq_dataset}.search_unique_items`("product of interest text representation", 0.275)
+            The last parameter is distance parameter, you can change it if needed.
+            
+            You should tweak the distance value, if you get semantically irrelevant items, try to decrease it, if you get no items, try to increase it. 
+            Tweak distance value, if you get not all expected items.
+
             Example of getting exact objects from 'items' field in 'main' table
             SELECT
                 item

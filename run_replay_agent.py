@@ -16,7 +16,7 @@ def main():
     
     config = {
         "GCP_PROJECT_ID": os.getenv("GCP_PROJECT_ID"),
-        "VERTEX_LOCATION": os.getenv("VERTEX_LOCATION"),
+        "SMART_MODEL_LOCATION": os.getenv("SMART_MODEL_LOCATION"),
         "BQ_DATASET": os.getenv("BQ_DATASET"),
     }
     
