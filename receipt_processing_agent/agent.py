@@ -274,6 +274,7 @@ class ReceiptProcessingAgent:
             readable_final_data['items'] = [
                 {
                     "full_name": item["full_name"],
+                    "normalized_name": item.get("normalized_name"),
                     "price": item["price"],
                     "currency": item["currency"],
                     "uom": item.get("uom"),
@@ -296,11 +297,9 @@ class ReceiptProcessingAgent:
 
                 **Items Purchased:**
 
-                | Item Name             | Price (UAH) |
-                | :-------------------- | :---------- |
-                | Трайфл Маракуя-Ананас | 215.60      |
-                | Трайфл Пінчер з Вишнею | 215.60      |
-                | Трайфл Солона карамель | 215.60      |
+                | Item Name (or Normalized Name) | Unit of Measurement (uom) | Measurement Value | Count / Quantity | Unit Price (UAH) | Total Price (UAH) |
+                | :----------------------------- | :------------------------ | :---------------- | :--------------- | :--------------- | :---------------- |
+                | Trifle                         | g                         | 160.0             | 3                | 215.60           | 646.80            |
                 """
 
             return {
@@ -369,6 +368,7 @@ class ReceiptProcessingAgent:
             readable_final_data['items'] = [
                 {
                     "full_name": item["full_name"],
+                    "normalized_name": item.get("normalized_name"),
                     "price": item["price"],
                     "currency": item["currency"],
                     "uom": item.get("uom"),

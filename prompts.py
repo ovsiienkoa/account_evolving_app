@@ -129,7 +129,15 @@ def get_normalize_names_prompt(schema_json: str, names_json: str) -> str:
 def get_summarize_receipt_prompt(receipt_data_json: str) -> str:
     return f"""
         You are an accounting assistant. Please create a friendly, well-formatted Markdown summary of the following receipt.
-        Include the Merchant, Date, Total Amount, and a markdown table of the items (showing their name and price).
+        Include the Merchant, Date, Total Amount, and a markdown table of the items.
+        
+        In the markdown table of items, you must show the counts (quantity) of each bought product, grouping items by their name (or normalized name), unit of measurement (uom), and measurement value itself. Show the following columns:
+        - Item Name (or Normalized Name)
+        - Unit of Measurement (uom)
+        - Measurement Value
+        - Count / Quantity
+        - Unit Price
+        - Total Price
         
         Receipt Data:
         {receipt_data_json}
